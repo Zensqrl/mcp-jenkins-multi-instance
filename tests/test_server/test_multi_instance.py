@@ -1,13 +1,14 @@
 """Tests for multi-instance parallel query tools."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from mcp_jenkins.server.multi_instance import (
     get_all_items_multi_instance,
-    get_running_builds_multi_instance,
     get_all_nodes_multi_instance,
     get_all_queue_items_multi_instance,
+    get_running_builds_multi_instance,
 )
 
 
