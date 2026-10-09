@@ -99,7 +99,7 @@ instances:
         with pytest.raises(ValueError, match="must contain a YAML mapping"):
             load_instances_config(config_file)
 
-    def test_missing_required_fields(self, tmp_path):
+    def test_anonymous_instance(self, tmp_path):
         config_file = tmp_path / "incomplete.yaml"
         config_file.write_text("""
 default: prod
@@ -108,8 +108,9 @@ instances:
     url: http://example.com
 """)
 
-        with pytest.raises(Exception):  # noqa: B017
-            load_instances_config(config_file)
+        config = load_instances_config(config_file)
+        assert config.instances["prod"].username is None
+        assert config.instances["prod"].password is None
 
     def test_default_references_missing_instance(self, tmp_path):
         config_file = tmp_path / "bad_default.yaml"
@@ -124,3 +125,8 @@ instances:
 
         with pytest.raises(ValueError, match="Default instance 'missing' not found"):
             load_instances_config(config_file)
+
+
+def test_instance_requires_url():
+    with pytest.raises(ValueError, match='url'):
+        JenkinsInstanceConfig()

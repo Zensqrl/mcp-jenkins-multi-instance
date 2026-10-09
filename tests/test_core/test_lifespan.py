@@ -123,6 +123,44 @@ class TestJenkins:
         with pytest.raises(ValueError):
             jenkins(mock_ctx)
 
+    @pytest.mark.parametrize(('username', 'password'), [(None, None), ('', '')])
+    def test_anonymous_credentials(self, mock_jenkins, mock_get_http_request, mock_ctx, username, password):
+        mock_get_http_request.side_effect = RuntimeError('No HTTP')
+        mock_ctx.request_context.lifespan_context.jenkins_username = username
+        mock_ctx.request_context.lifespan_context.jenkins_password = password
+        jenkins(mock_ctx)
+        mock_jenkins.assert_called_once_with(
+            url='https://jenkins.example.com', username=username, password=password, timeout=5, verify_ssl=True
+        )
+
+    @pytest.mark.parametrize(('username', 'password'), [('user', None), (None, 'token')])
+    def test_partial_credentials_rejected(self, mock_jenkins, mock_get_http_request, mock_ctx, username, password):
+        mock_get_http_request.side_effect = RuntimeError('No HTTP')
+        mock_ctx.request_context.lifespan_context.jenkins_username = username
+        mock_ctx.request_context.lifespan_context.jenkins_password = password
+        with pytest.raises(ValueError, match='provided together'):
+            jenkins(mock_ctx)
+        mock_jenkins.assert_not_called()
+
+    def test_anonymous_missing_url_rejected(self, mock_jenkins, mock_get_http_request, mock_ctx):
+        mock_get_http_request.side_effect = RuntimeError('No HTTP')
+        mock_ctx.request_context.lifespan_context.jenkins_url = None
+        mock_ctx.request_context.lifespan_context.jenkins_username = None
+        mock_ctx.request_context.lifespan_context.jenkins_password = None
+        with pytest.raises(ValueError, match='URL is required'):
+            jenkins(mock_ctx)
+        mock_jenkins.assert_not_called()
+
+    def test_merged_header_credentials(self, mock_jenkins, mock_get_http_request, mock_ctx, mocker):
+        mock_ctx.request_context.lifespan_context.jenkins_password = None
+        mock_get_http_request.return_value = mocker.Mock(
+            state=mocker.Mock(jenkins_url=None, jenkins_username=None, jenkins_password='header-token')
+        )
+        jenkins(mock_ctx)
+        mock_jenkins.assert_called_once_with(
+            url='https://jenkins.example.com', username='username', password='header-token', timeout=5, verify_ssl=True
+        )
+
     def test_ctx_jenkins_exists(
         self, mock_jenkins, mock_get_http_request, mock_ctx, mocker
     ):
@@ -259,3 +297,22 @@ class TestJenkinsMultiInstance:
         # Different instance creates new client
         jenkins(mock_ctx, instance="dev")
         assert mock_jenkins_cls.call_count == 2
+
+    def test_anonymous_instance_cache_isolated(self, mock_jenkins_cls, mock_get_http_request, mock_ctx, multi_config):
+        multi_config.instances['public'] = JenkinsInstanceConfig(url='https://public.example.com')
+        mock_get_http_request.side_effect = RuntimeError('No HTTP')
+        mock_ctx.request_context.lifespan_context.jenkins_session_singleton = True
+        public_client = jenkins(mock_ctx, instance='public')
+        mock_jenkins_cls.assert_called_once_with(
+            url='https://public.example.com', username=None, password=None, timeout=5, verify_ssl=True
+        )
+        assert jenkins(mock_ctx, instance='public') is public_client
+        jenkins(mock_ctx, instance='prod')
+        assert mock_jenkins_cls.call_count == 2
+        assert set(mock_ctx.session.jenkins_clients) == {'public', 'prod'}
+
+
+@pytest.mark.parametrize(('username', 'password'), [('user', None), (None, 'token'), ('', 'token')])
+def test_instance_partial_credentials_rejected(username, password):
+    with pytest.raises(ValueError, match='provided together'):
+        JenkinsInstanceConfig(url='https://example.com', username=username, password=password)

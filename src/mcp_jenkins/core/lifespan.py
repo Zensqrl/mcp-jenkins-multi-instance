@@ -138,9 +138,10 @@ def jenkins(ctx: Context, instance: str | None = None) -> Jenkins:
             f"Unexpected error retrieving Jenkins auth from request, falling back to environment variables: {e}"
         )
 
-    if not all((jenkins_url, jenkins_username, jenkins_password)):
+    if not jenkins_url or bool(jenkins_username) != bool(jenkins_password):
         msg = (
-            "Jenkins authentication details are missing. "
+            "Jenkins connection details are incomplete: the URL is required, "
+            "and username and password must be provided together or not at all. "
             "Please provide them via x-jenkins-* headers "
             "or CLI arguments (--jenkins-url, --jenkins-username, --jenkins-password)."
         )
