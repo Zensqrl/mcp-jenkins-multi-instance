@@ -239,3 +239,15 @@ Licensed under MIT - see [LICENSE](LICENSE) file. This is not an official Jenkin
 
 ## Star History
 [![Star History Chart](https://api.star-history.com/svg?repos=lanbaoshen/mcp-jenkins&type=Date)](https://www.star-history.com/#lanbaoshen/mcp-jenkins&Date)
+
+### Anonymous Jenkins access
+
+Leave both username and password unset (or empty) to use Jenkins without explicit Basic Auth.
+The Jenkins URL is still required; providing only one credential is rejected. This applies
+both to legacy CLI/header credentials and each instance in the YAML configuration.
+Existing Requests/netrc credential discovery remains unchanged. Jenkins controls the
+permissions available to an anonymous user.
+
+Matrix configuration fullnames such as `folder/matrix-job/jdk=17,label=linux` are
+addressed using Jenkins' configuration-child URL, without an extra `job/` prefix
+before the axis values. Ordinary job and folder URLs remain unchanged.

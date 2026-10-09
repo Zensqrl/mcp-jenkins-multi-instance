@@ -1,5 +1,6 @@
 import pytest
 from requests import HTTPError
+from requests.auth import HTTPBasicAuth
 
 from mcp_jenkins.jenkins import Jenkins
 from mcp_jenkins.jenkins.model.build import Artifact, Build, BuildReplay
@@ -1514,3 +1515,48 @@ class TestPlugin:
         )
         assert version_issue is not None
         assert version_issue["dependency"] == "optional-dep"
+
+
+@pytest.mark.parametrize(('username', 'password'), [(None, None), ('', '')])
+def test_anonymous_session(mock_session, username, password):
+    mock_session.auth = None
+    Jenkins(url='https://example.com', username=username, password=password)
+    assert mock_session.auth is None
+
+
+def test_authenticated_session(mock_session):
+    Jenkins(url='https://example.com', username='user', password='token')
+    assert mock_session.auth == HTTPBasicAuth('user', 'token')
+
+
+@pytest.mark.parametrize(('fullname', 'expected'), [
+    ('matrix/jdk=17', 'job/matrix/jdk=17'),
+    ('folder/matrix/jdk=17,label=linux', 'job/folder/job/matrix/jdk=17,label=linux'),
+    ('folder/matrix/jdk=17,label=test:linux', 'job/folder/job/matrix/jdk=17,label=test:linux'),
+    ('a=b', 'job/a=b'),
+    ('folder/plain', 'job/folder/job/plain'),
+])
+def test_matrix_item_and_build_urls(jenkins, mocker, fullname, expected):
+    mocker.patch('mcp_jenkins.jenkins.rest_client.serialize_item')
+    mocker.patch('mcp_jenkins.jenkins.rest_client.Build.model_validate')
+    request = mocker.patch.object(jenkins, 'request')
+    jenkins.get_item(fullname=fullname)
+    assert request.call_args.args[1] == f'{expected}/api/json?depth=0'
+    jenkins.get_build(fullname=fullname, number=5)
+    assert request.call_args.args[1] == f'{expected}/5/api/json?depth=0'
+    jenkins.stop_build(fullname=fullname, number=5)
+    assert request.call_args.args[1] == f'{expected}/5/stop'
+    assert jenkins.get_build_artifact_url(fullname=fullname, number=5, relative_path='out/file.txt') == (
+        f'https://example.com/{expected}/5/artifact/out/file.txt'
+    )
+
+
+def test_matrix_console_url(jenkins, mock_session, mocker):
+    response = mocker.MagicMock()
+    response.__enter__.return_value = response
+    response.iter_lines.return_value = ['line1']
+    mock_session.get.return_value = response
+    jenkins.get_build_console_output(fullname='matrix/jdk=17,label=linux', number=5)
+    mock_session.get.assert_called_once_with(
+        'https://example.com/job/matrix/jdk=17,label=linux/5/consoleText', timeout=jenkins.timeout, stream=True
+    )

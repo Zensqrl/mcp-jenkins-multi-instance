@@ -6,10 +6,18 @@ from pydantic import BaseModel, model_validator
 
 class JenkinsInstanceConfig(BaseModel):
     url: str
-    username: str
-    password: str
+    username: str | None = None
+    password: str | None = None
     timeout: int = 5
     verify_ssl: bool = True
+
+
+    @model_validator(mode='after')
+    def validate_credentials(self) -> 'JenkinsInstanceConfig':
+        if bool(self.username) != bool(self.password):
+            msg = 'Jenkins username and password must be provided together or not at all.'
+            raise ValueError(msg)
+        return self
 
 
 class MultiInstanceConfig(BaseModel):

@@ -28,8 +28,8 @@ class Jenkins:
         self,
         *,
         url: str,
-        username: str,
-        password: str,
+        username: str | None = None,
+        password: str | None = None,
         timeout: int = 75,
         verify_ssl: bool = True,
     ) -> None:
@@ -39,7 +39,8 @@ class Jenkins:
         self._crumb_header = None
 
         self._session = requests.Session()
-        self._session.auth = HTTPBasicAuth(username, password)
+        if username and password:
+            self._session.auth = HTTPBasicAuth(username, password)
         self._session.verify = verify_ssl
 
     def endpoint_url(self, endpoint: str) -> str:
@@ -139,6 +140,8 @@ class Jenkins:
 
         return self._crumb_header
 
+    _MATRIX_CONFIGURATION = re.compile(r'^[^=,]+=[^,]*(,[^=,]+=[^,]*)*$')
+
     def _parse_fullname(self, fullname: str) -> tuple[str, str]:
         """Parse a fullname into folder URL and short name.
 
@@ -150,9 +153,14 @@ class Jenkins:
                 - folder: The constructed folder URL (e.g., "job/folder1/job/folder2/").
                 - name: The last component of the path (e.g., "name").
         """
-        parts = fullname.split("/")
-        name = parts[-1]
-        folder = f'job/{"/job/".join(parts[:-1])}/' if len(parts) > 1 else ""
+        # Matrix configuration children omit the job/ prefix in Jenkins URLs.
+        segments = [
+            part if index > 0 and self._MATRIX_CONFIGURATION.match(part) else f'job/{part}'
+            for index, part in enumerate(fullname.split('/'))
+        ]
+        job_path = '/'.join(segments)
+        # Keep the fork's existing endpoint contract: folder + job/ + name.
+        folder, name = job_path.rsplit('job/', 1)
         return folder, name
 
     def _build_view_path(self, view_path: str) -> str:
